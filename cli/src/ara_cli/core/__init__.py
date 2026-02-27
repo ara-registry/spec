@@ -1,0 +1,1 @@
+"""ARA CLI core logic."""
