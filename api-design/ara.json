@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "name": "ara/api-design",
+  "version": "1.0.0",
+  "description": "Comprehensive REST API design best practices for AI agents building HTTP APIs",
+  "author": "ara@example.com",
+  "tags": ["api-design", "rest", "http", "best-practices"],
+  "type": "skill",
+  "license": "Apache-2.0",
+  "files": ["SKILL.md"]
+}
