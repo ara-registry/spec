@@ -2,17 +2,23 @@
 
 ARA (pronounced: _ah-rah_) is a package registry and distribution system for AI development artifacts. It provides a standardized way to discover, share, and install reusable components that enhance AI assistants and development workflows.
 
+ARA is a vendor-agnostic open standard — any AI coding tool can implement it, including Kiro, Claude Code, Cursor, VS Code Copilot, Windsurf, and others.
+
 ## Package Types
 
-ARA supports various types of packages:
+ARA supports the following package types:
 
-- **Kiro Custom Agents** (`kiro-agent`): Kiro custom agent configurations with prompts, tools, and behaviors
-- **MCP Servers** (`mcp-server`): Model Context Protocol servers that extend AI capabilities
-- **Context** (`context`): Knowledge files, prompt templates, and reference materials
-- **Skills** (`skill`): Procedural knowledge via SKILL.md that agents load dynamically
-- **Kiro Powers** (`kiro-powers`): Bundle for MCP tools, steering files and hooks that give agents specialized knowledge
-- **Kiro Steering** (`kiro-steering`): Kiro persistent knowledge about your projects
-- **AGENTS.md** (`agents-md`): An open format for guiding coding agents
+| Type | Description |
+|------|-------------|
+| `agent` | AI assistant configurations with prompts, tools, and behaviors |
+| `mcp-server` | Model Context Protocol servers that extend AI capabilities |
+| `powers` | Bundles of MCP tools, steering files, and hooks |
+| `steering` | Persistent project knowledge files that guide agent behavior |
+| `skill` | Procedural knowledge via SKILL.md |
+| `context` | Knowledge files, prompt templates, and reference materials |
+| `agents-md` | AGENTS.md format for guiding coding agents |
+
+Use the optional `platform` field to declare tool-specific installation targets (e.g., `"platform": "kiro"`).
 
 ## Quick Links
 
@@ -27,12 +33,13 @@ ARA supports various types of packages:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
+  "specVersion": "1.0",
   "name": "acme/code-reviewer",
   "version": "1.0.0",
   "description": "AI agent for automated code review",
   "author": "developer@example.com",
   "tags": ["code-review", "automation"],
-  "type": "kiro-agent"
+  "type": "agent"
 }
 ```
 

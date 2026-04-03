@@ -2,12 +2,15 @@
 
 A `ara.json` file is a standardized way to describe packages for registry publishing, client discovery, and package management.
 
+> **Note on schema URL:** Examples in this spec use `refs/heads/main`. Production consumers SHOULD pin to a tagged release URL (e.g., `refs/tags/v1.0`) once v1.0 is cut, to avoid unexpected breakage from schema updates to the main branch.
+
 See also:
 - [Ecosystem Vision](vision.md) for design principles and architecture
 - [JSON Schema](ara.schema.json) for machine-readable validation
 
 ## Table of Contents
 
+- [Normative Language](#normative-language)
 - [For Implementers](#for-implementers)
 - [Required Fields](#required-fields)
   - [name](#name)
@@ -16,19 +19,30 @@ See also:
   - [author](#author)
   - [tags](#tags)
 - [Optional Fields](#optional-fields)
+  - [specVersion](#specversion)
   - [type](#type)
+  - [platform](#platform)
   - [files](#files)
   - [license](#license)
   - [homepage](#homepage)
   - [repository](#repository)
+  - [private](#private)
   - [dependencies](#dependencies)
   - [sources](#sources)
 - [Package Types](#package-types)
+- [Installation Routing](#installation-routing)
+- [Lock File](#lock-file-aralock)
 - [Complete Example](#complete-example)
+
+## Normative Language
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
 ## For Implementers
 
-This specification defines the `ara.json` format for package manifests. Sections marked "Implementation Notes" provide guidance for clients and registries implementing this standard. These notes describe expected behavior but allow flexibility in implementation details.
+This specification defines the `ara.json` format for package manifests. All normative requirements use RFC 2119 language (MUST, SHOULD, MAY) as defined in the [Normative Language](#normative-language) section above.
 
 ---
 
@@ -90,16 +104,23 @@ Focus on capabilities and use cases, not implementation details.
 
 ### author
 
-Author email address for contact and attribution.
+Author contact information for attribution.
 
 | Property | Value |
 |----------|-------|
-| Type | `string` |
-| Format | email |
+| Type | `string` (email) or `object` |
+
+Accepts either a plain email string (backwards-compatible) or an object for richer attribution:
 
 ```json
-{
-  "author": "team@acme.com"
+// String form (backwards compatible)
+"author": "team@acme.com"
+
+// Object form
+"author": {
+  "name": "ACME Corp",
+  "email": "team@acme.com",
+  "url": "https://acme.com"
 }
 ```
 
@@ -126,6 +147,24 @@ Use lowercase, hyphen-separated terms. Tags improve discoverability in registry 
 
 ## Optional Fields
 
+### specVersion
+
+Version of the ARA spec this manifest targets.
+
+| Property | Value |
+|----------|-------|
+| Type | `string` |
+| Pattern | `^[0-9]+\.[0-9]+$` |
+| Default | `1.0` |
+
+```json
+{
+  "specVersion": "1.0"
+}
+```
+
+Clients MUST reject manifests with an unrecognized `specVersion` value and report an error to the user. Clients MAY use `specVersion` to apply forward-compatible parsing between known versions.
+
 ### type
 
 Package type determining installation and usage behavior.
@@ -133,24 +172,42 @@ Package type determining installation and usage behavior.
 | Property | Value |
 |----------|-------|
 | Type | `string` |
-| Enum | `kiro-agent`, `mcp-server`, `context`, `skill`, `kiro-powers`, `kiro-steering`, `agents-md` |
-| Default | `kiro-agent` |
+| Enum | `agent`, `mcp-server`, `powers`, `steering`, `skill`, `context`, `agents-md` |
 
 | Type | Description |
 |------|-------------|
-| `kiro-agent` | Kiro custom agent configurations with prompts, tools, and behaviors |
+| `agent` | AI assistant configurations with prompts, tools, and behaviors |
 | `mcp-server` | Model Context Protocol servers that extend AI capabilities |
-| `context` | Knowledge files, prompt templates, and reference materials |
-| `skill` | Procedural knowledge via SKILL.md that agents load dynamically |
-| `kiro-powers` | Bundle for MCP tools, steering files and hooks that give agents specialized knowledge |
-| `kiro-steering` | Kiro persistent knowledge about your projects |
-| `agents-md` | AGENTS.md format for guiding coding agents |
+| `powers` | Kiro-specific bundles of MCP tools, steering files, and hooks that give agents specialized capabilities |
+| `steering` | Kiro-specific persistent knowledge files automatically included in the agent context window |
+| `skill` | Reusable procedural knowledge via the [SKILL.md open standard](https://skillmd.org) that agents load on demand — platform-agnostic |
+| `context` | Generic knowledge assets (files, prompt templates, reference docs) injected into the agent context window — platform-agnostic |
+| `agents-md` | Agent instruction files following the [AGENTS.md open standard](https://agents.md/) — platform-agnostic |
 
 ```json
 {
-  "type": "mcp-server"
+  "type": "agent"
 }
 ```
+
+### platform
+
+Optional vendor-specific platform identifier.
+
+| Property | Value |
+|----------|-------|
+| Type | `string` |
+
+The `platform` field allows tool vendors to declare platform-specific installation behavior while remaining interoperable at the registry level. The registry routes the archive; the client uses `platform` to determine where to unpack it.
+
+```json
+{
+  "type": "agent",
+  "platform": "kiro"
+}
+```
+
+Example values: `kiro`, `claude-code`, `opencode`, `codex`. Tool vendors MAY define their own platform identifiers using a consistent lowercase slug.
 
 ### files
 
@@ -172,7 +229,7 @@ Package files to include when publishing.
 #### Path Rules
 
 - Paths are relative to the package root (where `ara.json` lives)
-- Paths must not escape the package root (no `../` traversal)
+- Paths MUST NOT escape the package root (no `../` traversal)
 - Directory paths should end with `/` to include all contents recursively
 - Glob patterns are not supported - use explicit paths
 
@@ -188,13 +245,11 @@ Package files to include when publishing.
 
 #### Implementation Notes
 
-Clients implementing this spec should:
-
-1. Resolve paths relative to the `ara.json` location
-2. Reject paths containing `..` or absolute paths
-3. When a directory path ends with `/`, recursively include all files within
-4. Preserve directory structure in the packaged output
-5. When `files` is omitted, apply sensible defaults to exclude build artifacts and version control directories
+1. Implementations MUST resolve paths relative to the `ara.json` location
+2. Implementations MUST reject paths containing `..` or absolute paths
+3. When a directory path ends with `/`, implementations SHOULD recursively include all files within
+4. Implementations MUST preserve directory structure in the packaged output
+5. When `files` is omitted, implementations SHOULD apply sensible defaults to exclude build artifacts and version control directories
 
 ### license
 
@@ -243,6 +298,23 @@ Source repository URL for browsing and contributing.
 }
 ```
 
+### private
+
+Marks this package as internal-only, preventing accidental publishing to public registries.
+
+| Property | Value |
+|----------|-------|
+| Type | `boolean` |
+| Default | `false` |
+
+```json
+{
+  "private": true
+}
+```
+
+Registries MUST treat `private: true` packages as non-publishable to public indexes. Clients SHOULD warn users attempting to publish a private package.
+
 ### dependencies
 
 Package dependencies with version constraints.
@@ -274,7 +346,7 @@ Version constraints follow semantic versioning:
 
 #### Implementation Notes
 
-Clients implementing dependency resolution should:
+Implementations resolving dependencies SHOULD:
 
 1. Parse version constraints using semver semantics
 2. Resolve the dependency graph before installation
@@ -329,6 +401,14 @@ Only valid when `type` is `mcp-server`. Clients attempt sources in order, prefer
 | `registry` | No | Registry URL (defaults to pypi.org) |
 
 **git** - Build from source:
+
+> ⚠️ **Security Warning:** The `installCommand` field executes arbitrary shell commands
+> during installation. Clients MUST display the full command to the user and require
+> explicit confirmation before execution. Clients SHOULD sandbox execution where
+> possible. Registries SHOULD flag packages using `installCommand` for additional
+> security review. Never execute `installCommand` in automated or non-interactive
+> environments without explicit user opt-in.
+
 ```json
 {
   "type": "git",
@@ -349,6 +429,8 @@ Only valid when `type` is `mcp-server`. Clients attempt sources in order, prefer
 | `installCommand` | No | Build command after clone |
 | `executable` | No | Path to executable after build |
 
+Clients implementing `installCommand` support SHOULD maintain a configurable allowlist of permitted commands and patterns.
+
 **mcp-registry** - Install from MCP Registry:
 ```json
 {
@@ -361,6 +443,25 @@ Only valid when `type` is `mcp-server`. Clients attempt sources in order, prefer
 |-------|----------|-------------|
 | `type` | Yes | `"mcp-registry"` |
 | `package` | Yes | MCP Registry package name |
+
+**oci** - Pull from an OCI/container registry:
+```json
+{
+  "type": "oci",
+  "image": "ghcr.io/acme/weather-mcp",
+  "tag": "2.0.0",
+  "digest": "sha256:abc123...",
+  "registry": "ghcr.io"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | Yes | `"oci"` |
+| `image` | Yes | Full image name |
+| `tag` | No | Image tag (defaults to `latest`) |
+| `digest` | No | Content-addressable digest (preferred over tag for reproducibility) |
+| `registry` | No | Registry host (inferred from image if omitted) |
 
 #### Multiple Sources
 
@@ -386,7 +487,7 @@ Packages can specify multiple sources for redundancy:
 
 #### Implementation Notes
 
-Clients implementing source resolution should:
+Implementations SHOULD:
 
 1. Attempt the source marked `preferred: true` first
 2. Fall back to other sources in array order on failure
@@ -397,19 +498,19 @@ Clients implementing source resolution should:
 
 ## Package Types
 
-### Kiro Agent Packages
+### Agent Packages
 
-Kiro agent packages contain AI assistant configurations including prompts, tool definitions, and behavioral settings.
+Agent packages contain AI assistant configurations including prompts, tool definitions, and behavioral settings. Use `platform` to declare tool-specific installation targets.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "name": "acme/code-reviewer",
   "version": "1.0.0",
   "description": "AI agent for automated code review",
   "author": "developer@example.com",
   "tags": ["code-review", "automation", "quality"],
-  "type": "kiro-agent",
+  "type": "agent",
   "files": [
     "prompts/system.md",
     "prompts/review.md",
@@ -424,7 +525,7 @@ MCP server packages describe Model Context Protocol servers with installation so
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "name": "acme/weather-server",
   "version": "2.0.0",
   "description": "MCP server for weather data access",
@@ -447,7 +548,7 @@ Context packages contain knowledge files, prompt templates, and reference materi
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "name": "acme/rust-guidelines",
   "version": "1.0.0",
   "description": "Rust coding guidelines and best practices",
@@ -467,7 +568,7 @@ Skill packages contain procedural knowledge that agents load dynamically via SKI
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "name": "acme/git-workflow",
   "version": "1.0.0",
   "description": "Git workflow procedures for branching and merging",
@@ -480,53 +581,13 @@ Skill packages contain procedural knowledge that agents load dynamically via SKI
 }
 ```
 
-### Kiro Powers Packages
-
-Kiro Powers packages bundle MCP tools with steering files and hooks that give agents specialized knowledge.
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
-  "name": "acme/database-power",
-  "version": "1.0.0",
-  "description": "Database management power with SQL tools and best practices",
-  "author": "developer@example.com",
-  "tags": ["database", "sql", "tools"],
-  "type": "kiro-powers",
-  "files": [
-    "tools/",
-    "steering/",
-    "hooks/"
-  ]
-}
-```
-
-### Kiro Steering Packages
-
-Kiro Steering packages contain persistent knowledge about your projects.
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
-  "name": "acme/react-patterns",
-  "version": "1.0.0",
-  "description": "React development patterns and conventions",
-  "author": "developer@example.com",
-  "tags": ["react", "patterns", "conventions"],
-  "type": "kiro-steering",
-  "files": [
-    "steering.md"
-  ]
-}
-```
-
 ### AGENTS.md Packages
 
 AGENTS.md packages use the open format for guiding coding agents.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "name": "acme/monorepo-guide",
   "version": "1.0.0",
   "description": "AGENTS.md guide for monorepo development",
@@ -538,6 +599,84 @@ AGENTS.md packages use the open format for guiding coding agents.
   ]
 }
 ```
+
+### Powers Packages
+
+Powers packages bundle MCP tools with steering files and hooks that give agents specialized capabilities.
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
+  "name": "acme/database-power",
+  "version": "1.0.0",
+  "description": "Database management power with SQL tools and best practices",
+  "author": "developer@example.com",
+  "tags": ["database", "sql", "tools"],
+  "type": "powers",
+  "platform": "kiro",
+  "files": [
+    "tools/",
+    "steering/",
+    "hooks/"
+  ]
+}
+```
+
+### Steering Packages
+
+Steering packages contain persistent project knowledge that guides agent behavior.
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
+  "name": "acme/react-patterns",
+  "version": "1.0.0",
+  "description": "React development patterns and conventions",
+  "author": "developer@example.com",
+  "tags": ["react", "patterns", "conventions"],
+  "type": "steering",
+  "platform": "kiro",
+  "files": [
+    "steering.md"
+  ]
+}
+```
+
+---
+
+## Installation Routing
+
+An **ARA-compatible client** is any tool or CLI that implements this specification to install ARA packages. A developer may have multiple ARA-compatible tools active in the same project simultaneously. Clients SHOULD detect which other tools are present and install packages to all compatible locations in a single operation.
+
+### ARA-compatible Tool Contract
+
+Every ARA-compatible tool MUST publish the following as part of its ARA integration documentation:
+
+1. **Platform identifier** — the string used as the `platform` field value (e.g., the tool's canonical lowercase name)
+2. **Detection marker** — how other clients detect whether this tool is active in a project (typically a well-known directory at the project root or in the user's home directory)
+3. **Routing table** — a mapping of package `type` → installation path for all types the tool supports
+
+Clients SHOULD detect active tools by inspecting the project for the detection markers published by known ARA-compatible tools. Clients MAY also support an explicit configuration where users declare their active tools, for cases where detection is ambiguous.
+
+### The `platform` Field as a Restriction
+
+When `platform` is absent, a client SHOULD install to **all detected compatible tools**. When `platform` is set, installation is restricted to that tool only — all other detected tools MUST skip the package.
+
+| Manifest | Tools detected | Result |
+|----------|---------------|--------|
+| `"type": "skill"` | Tool A, Tool B | Installs for both |
+| `"type": "skill", "platform": "tool-a"` | Tool A, Tool B | Installs for Tool A only |
+| `"type": "agent", "platform": "tool-b"` | Tool A only | Skipped — Tool B not present |
+
+### Special Case: `agents-md`
+
+`agents-md` packages follow the [AGENTS.md open standard](https://agents.md/) — a single Markdown file placed at the project root, natively supported by a large number of AI coding tools. Clients SHOULD install `agents-md` packages to the project root as `AGENTS.md`.
+
+Tools that use a proprietary instruction file format instead of or in addition to `AGENTS.md` SHOULD document how their ARA client handles `agents-md` installation (e.g., creating an import or symlink from their proprietary format to `AGENTS.md`).
+
+### Special Case: `mcp-server`
+
+MCP server installation is driven by the `sources` field and is inherently tool-specific. Each ARA-compatible tool SHOULD document its MCP routing behavior as part of its integration documentation.
 
 ---
 
@@ -576,7 +715,7 @@ The `ara.lock` file records exact versions and integrity hashes for reproducible
     },
     "myteam/my-agent": {
       "version": "0.5.0",
-      "type": "kiro-agent",
+      "type": "agent",
       "integrity": "sha256-ghi789...",
       "resolved": "https://...",
       "dependencies": {}
@@ -593,7 +732,7 @@ The `ara.lock` file records exact versions and integrity hashes for reproducible
 | `generatedAt` | ISO 8601 timestamp when lock file was generated |
 | `packages` | Map of package names to locked metadata |
 | `version` | Exact installed version |
-| `type` | Package type (`kiro-agent`, `mcp-server`, `context`, `skill`, `kiro-powers`, `kiro-steering`, `agents-md`) |
+| `type` | Package type |
 | `integrity` | SHA-256 hash of package contents |
 | `resolved` | URL where package was downloaded from |
 | `dependencies` | Map of dependency names to version ranges |
@@ -609,12 +748,14 @@ The `ara.lock` file records exact versions and integrity hashes for reproducible
 
 ### Implementation Notes
 
-Clients implementing lock file support should:
+Implementations supporting lock files SHOULD:
 
 1. Generate lock file on first install or when dependencies change
 2. Verify integrity hash before using cached packages
 3. Re-resolve if lock file is missing or corrupted
 4. Commit lock file to version control for team reproducibility
+
+> **Note:** A JSON Schema for `ara.lock` is out of scope for this version of the spec.
 
 ---
 
@@ -622,16 +763,23 @@ Clients implementing lock file support should:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$schema": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
+  "specVersion": "1.0",
   "name": "acme/full-stack-assistant",
   "version": "2.1.0",
-  "description": "AI assistant for full-stack development with code review and testing capabilities",
-  "author": "team@acme.com",
+  "description": "AI assistant for full-stack development with code review and testing",
+  "author": {
+    "name": "ACME Corp",
+    "email": "team@acme.com",
+    "url": "https://acme.com"
+  },
   "tags": ["development", "code-review", "testing", "full-stack"],
-  "type": "kiro-agent",
+  "type": "agent",
+  "platform": "claude-code",
   "license": "MIT",
   "homepage": "https://acme.com/full-stack-assistant",
   "repository": "https://github.com/acme/full-stack-assistant",
+  "private": false,
   "files": [
     "prompts/system.md",
     "prompts/review.md",
@@ -643,7 +791,6 @@ Clients implementing lock file support should:
   }
 }
 ```
-
 
 ---
 

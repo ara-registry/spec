@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, Field, EmailStr, AnyUrl, field_validator, model_validator
 
 # Semantic versioning pattern from the JSON schema
@@ -16,12 +16,12 @@ TAG_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class PackageType(str, Enum):
-    KIRO_AGENT = "kiro-agent"
+    AGENT = "agent"
     MCPSERVER = "mcp-server"
-    CONTEXT = "context"
+    POWERS = "powers"
+    STEERING = "steering"
     SKILL = "skill"
-    KIRO_POWERS = "kiro-powers"
-    KIRO_STEERING = "kiro-steering"
+    CONTEXT = "context"
     AGENTS_MD = "agents-md"
 
 
@@ -30,19 +30,32 @@ class SourceType(str, Enum):
     PYPI = "pypi"
     GIT = "git"
     MCP_REGISTRY = "mcp-registry"
+    OCI = "oci"
+
+
+class AuthorObject(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    url: Optional[AnyUrl] = None
+
+    model_config = {"populate_by_name": True}
 
 
 class PackageSource(BaseModel):
     type: SourceType
     package: Optional[str] = None
     version: Optional[str] = None
-    registry: Optional[AnyUrl] = None
+    registry: Optional[str] = None
     repository: Optional[AnyUrl] = None
     ref: Optional[str] = None
     subfolder: Optional[str] = None
     install_command: Optional[str] = Field(None, alias="installCommand")
     executable: Optional[str] = None
     preferred: Optional[bool] = None
+    # OCI fields
+    image: Optional[str] = None
+    tag: Optional[str] = None
+    digest: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 
@@ -55,6 +68,9 @@ class PackageSource(BaseModel):
         elif self.type == SourceType.GIT:
             if self.repository is None:
                 raise ValueError("'repository' is required for git source type")
+        elif self.type == SourceType.OCI:
+            if self.image is None:
+                raise ValueError("'image' is required for oci source type")
         return self
 
 
@@ -62,13 +78,16 @@ class ARAManifest(BaseModel):
     name: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$", min_length=3, max_length=200)
     version: str
     description: str = Field(..., min_length=1, max_length=500)
-    author: EmailStr
+    author: Union[EmailStr, AuthorObject]
     tags: list[str] = Field(..., min_length=1)
-    type: PackageType = PackageType.KIRO_AGENT
+    spec_version: Optional[str] = Field(None, alias="specVersion")
+    type: Optional[PackageType] = None
+    platform: Optional[str] = None
     files: Optional[list[str]] = None
     license: Optional[str] = Field(None, max_length=100)
     homepage: Optional[AnyUrl] = None
     repository: Optional[AnyUrl] = None
+    private: bool = False
     dependencies: Optional[dict[str, str]] = None
     sources: Optional[list[PackageSource]] = None
 

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json",
+  "$id": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json",
   "title": "ara.json defining an ARA package",
-  "description": "Schema for a ARA package manifest. Used for discovery, installation, and configuration of AI development artifacts.",
+  "description": "Schema for an ARA package manifest. Used for discovery, installation, and configuration of AI development artifacts.",
   "type": "object",
   "required": ["name", "version", "description", "author", "tags"],
   "properties": {
@@ -10,7 +10,13 @@
       "type": "string",
       "format": "uri",
       "description": "JSON Schema URI for this ara.json format",
-      "example": "https://raw.githubusercontent.com/aws/ara/refs/heads/main/ara.schema.json"
+      "example": "https://raw.githubusercontent.com/ara-registry/spec/refs/heads/main/ara.schema.json"
+    },
+    "specVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Version of the ARA spec this manifest targets.",
+      "default": "1.0"
     },
     "name": {
       "type": "string",
@@ -34,10 +40,35 @@
       "example": "AI agent for automated code review with support for multiple languages"
     },
     "author": {
-      "type": "string",
-      "format": "email",
-      "description": "Author email address for contact and attribution.",
-      "example": "developer@example.com"
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "email",
+          "description": "Author email address (string form, backwards compatible).",
+          "example": "developer@example.com"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Author or organization name."
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Author email address."
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Author or organization homepage URL."
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "description": "Author contact information. Accepts a plain email string or an object with name, email, and url."
     },
     "tags": {
       "type": "array",
@@ -53,9 +84,21 @@
     },
     "type": {
       "type": "string",
-      "enum": ["kiro-agent", "mcp-server", "context", "skill", "kiro-powers", "kiro-steering", "agents-md"],
-      "default": "kiro-agent",
-      "description": "Package type determining installation and usage behavior. 'kiro-agent' for Kiro custom agent configurations, 'mcp-server' for MCP servers, 'context' for knowledge and prompt files, 'skill' for procedural knowledge via SKILL.md, 'kiro-powers' for MCP tools with steering files and hooks, 'kiro-steering' for persistent project knowledge, 'agents-md' for AGENTS.md format."
+      "enum": [
+        "agent",
+        "mcp-server",
+        "powers",
+        "steering",
+        "skill",
+        "context",
+        "agents-md"
+      ],
+      "description": "Package type determining installation and usage behavior."
+    },
+    "platform": {
+      "type": "string",
+      "description": "Optional vendor-specific platform identifier (e.g., 'kiro', 'claude-code'). Allows tool vendors to declare platform-specific behavior while remaining interoperable at the registry level.",
+      "example": "kiro"
     },
     "files": {
       "type": "array",
@@ -83,6 +126,11 @@
       "description": "Source repository URL for browsing and contributing.",
       "example": "https://github.com/example/my-package"
     },
+    "private": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, registries MUST refuse to publish this package to any public index."
+    },
     "dependencies": {
       "type": "object",
       "additionalProperties": {
@@ -106,7 +154,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["npm", "pypi", "git", "mcp-registry"],
+          "enum": ["npm", "pypi", "git", "mcp-registry", "oci"],
           "description": "Source type indicating how to install the package"
         },
         "package": {
@@ -119,8 +167,7 @@
         },
         "registry": {
           "type": "string",
-          "format": "uri",
-          "description": "Registry URL. Defaults to the public registry for the source type."
+          "description": "Registry URL or host. Defaults to the public registry for the source type."
         },
         "repository": {
           "type": "string",
@@ -137,7 +184,7 @@
         },
         "installCommand": {
           "type": "string",
-          "description": "Build command to run after cloning. Used with git source type.",
+          "description": "Build command to run after cloning. Used with git source type. Clients MUST require explicit user confirmation before executing.",
           "example": "npm install && npm run build"
         },
         "executable": {
@@ -148,6 +195,19 @@
         "preferred": {
           "type": "boolean",
           "description": "Mark this source as preferred. Clients attempt preferred sources first."
+        },
+        "image": {
+          "type": "string",
+          "description": "Full OCI image name (e.g., ghcr.io/acme/weather-mcp). Required for oci source type."
+        },
+        "tag": {
+          "type": "string",
+          "description": "OCI image tag. Defaults to 'latest'. Used with oci source type."
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content-addressable OCI digest (preferred over tag for reproducibility). Used with oci source type.",
+          "example": "sha256:abc123..."
         }
       },
       "allOf": [
@@ -181,6 +241,14 @@
           },
           "then": {
             "required": ["package"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "oci" } }
+          },
+          "then": {
+            "required": ["image"]
           }
         }
       ]
